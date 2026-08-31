@@ -136,6 +136,13 @@ You need to install nasm and Makefile.
 * Other linux versions
   very similar setup, using your own package manager
 
+You need to ensure the device or iso image you are testing on, has: 
+A. Big enough gap sectors (62 sectors) on mbr formatted disks 
+or 
+B. has free partition area of 2M (could be 31kb theoretically) on gpt formatted disks
+
+You will make sure that you have remedial measures to reinstall grub or other mainstream bootloaders once things go out of blue (since it is still under development)
+
 ### Installation
 
 1. Clone the repo
