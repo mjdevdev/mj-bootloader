@@ -179,9 +179,9 @@ _For more examples, please refer to the [Documentation](https://example.com)_-->
 
 Currently the bootloader is tested on a live usb stick. It is guaranteed to not brick your device during both the installation and testing process.
 
-It currently only loads the second stage bootloader and prints a message on it. In the future it will display a list of partitions for you to select and boot to. 
+It currently only loads the second stage bootloader and prints a message on it. 
 
-It will automatically search available partitions like other bootloaders. 
+Features like boot menu, finding linux partitions and loading it, are still under development but will be released soon.
 
 <!--<p align="right">(<a href="#readme-top">back to top</a>)</p>-->
 
