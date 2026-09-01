@@ -204,7 +204,7 @@ jmp infinite_halt
 
 lba_drive_call: ;has to be top level calls, or else ret addresses pollute it
 mov ah, 0x42
-mov bx, 0x7bfe
+mov bx, 0x7c00-2
 mov dl, byte [bx]
 ;mov dx, cx
 ;mov dx, 0x80
