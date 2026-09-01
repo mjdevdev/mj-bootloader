@@ -9,6 +9,7 @@ mov es, ax
 mov fs, ax
 mov gs, ax
 
+mov sp, 0x7c00-2 ;where the drive in use number is stored
 
 mov si, testlol
 call puts
@@ -71,10 +72,43 @@ mov bx, 0x1234
 mov eax, 0xFFFFFFFF
 mov word [eax], bx  ;small snippet to verify unreal mode is enabled.
 
+jmp hltbro ;temp end
 
 ;begin searching partition tables for windows and linux signatures
 mov si, beginsearch
 call puts
+
+;do the gpt sig matching again
+
+mov ah, 0x42
+mov bp, sp
+mov dl, byte [bp]
+mov word [dap_gpt_packet.start], 1
+mov word [dap_gpt_packet.size], 1
+int 0x13
+
+movdqu xmm0, [gpt_header]
+pcmpeqq xmm0, [gpt_sig]
+pmovmskb ebx, xmm0
+and bx, 1
+
+jz notgpt 
+
+gpt:
+;loop over 128 entries (possibly more and also over the 2nd gpt table) in the future
+
+
+
+
+
+notgpt:
+
+
+
+
+
+mov word [dap_gpt_packet.size], 33-2+1 ;mov in case gpt is matched
+mov word [dap_gpt_packet.start], 2
 
 
 
@@ -123,8 +157,18 @@ gdtr:
 dw 24-1 ;maximum possible offset (size-1)
 dd gdt_base
 
+dap_gpt_packet:
+db 0x16, 0
+.size dw 33-2+1
+dw 0, gpt_entries_base
+.start dq 2
 
-partition_table_gpt_base:
+gpt_sig:
+dq 0x5452415020494645
+
+
+gpt_entries_base:
+gpt_header equ gpt_entries_base
 resb 512*(33-2+1)
 
 

@@ -23,8 +23,8 @@ mov ax, 0
 mov ds, ax
 mov ss, ax
 mov es, ax
-mov fs, ax
-mov gs, ax
+;mov fs, ax
+;mov gs, ax
 ;mov cs, ax  lol can only change with jump instructions
 
 mov sp, 0x7c00 ;growing downwards 
@@ -33,7 +33,8 @@ push dx ;save drive number that is used to boot the machine
 
 ;enable SSE 2
 mov eax, cr4            
-or eax, 0b000000000000000000000011000000000   
+;or eax, 0b000000000000000000000011000000000   
+or ah, 6      
 mov cr4, eax            
 
 
@@ -41,18 +42,23 @@ mov cr4, eax
 ;load stage2 bootloader, should only be 1 bios interrupt
 
 ;verify LBA is supported. if not print a message on the terminal and hlt
-mov ah, 0x41
-mov bx, 0x55AA
-mov dl, 0x80
-int 0x13
-cmp bx, 0xAA55
-jnz error_edd
+;mov ah, 0x41
+;mov bx, 0x55AA
+;mov dl, 0x80
+;int 0x13
+;cmp bx, 0xAA55
+;jnz error_edd 
+
+;dont check to save space. all hdds and ssds support lba. 
 
 ;verify whether drive is mbr or gpt. if gpt then the bootloader will be stored at 34. still no guarantees though. 
 ;but at least there should be a space huge enough to accomodate the bootloader, like 34-62 at least
 
 
 mov si, dap_signature
+mov byte [dap_signature+2], 1 ;it is qword but it fits our purpose, just write a byte to save space
+mov dword [dap_signature+8], 1
+mov dword [dap_signature+12], 0
 call lba_drive_call
 jc error_unknown_or_annoying
 
@@ -65,14 +71,37 @@ jnz not_gpt
 
 
 ;found to be matching guid signature, now scan for the mj-bootloader partition that stores the second stage bootloader
-;only supports searching 128 entries and 1 partition table for now
+;only supports searching 1 partitions array for now
 
 mov si, dap_guid_table
+movq mm0, [base_read+0x48]
+movq [dap_guid_table+8], mm0
+mov eax, [base_read+0x50] ; eax = number of entries
+push eax ;save the number of entries
+and eax, 0xffff ;hard cap at 65535 entires dont need that much
+mov ebx, [base_read+0x54]
+and ebx, 0xffff; sorry, capping single entry size at 65535 bytes too
+push ebx ;save single tnry size
+imul eax, ebx ;size of single entry
+xor edx, edx ;upper 32 bits zero out
+mov ebx, 512 ;divide by sectors
+div ebx
+or edx, edx
+jz no_remainder
+add eax, 1
+no_remainder:
+mov [dap_guid_table+2], ax
+
+
 call lba_drive_call
 jc error_unknown_or_annoying
 
+pop ebx
+pop eax
+
 mov si, base_read
-mov cx, 128
+mov cx, ax
+;mov cx, [base_read+0x50] ; sorry! cannot support more than 0xffff entries at the moment.. it is more than normal practical use anyway 
 
 
 ;save sse (dont need to save because i am not calling any bios interrupts in between..?
@@ -85,7 +114,6 @@ mov cx, 128
 
 ;initializations
 movdqu xmm0, [mjpartid]
-mov cx, 128
 
 .loop_find_mj_partition:
 movdqu xmm1, [si] ;fetch first 128 bits
@@ -96,9 +124,8 @@ test di, di
 jz .found
 
 
-add si, 128 
+add si, bx
 sub cx, 1
-;only add 127 times, 128th is ditched because out of bound
 jnz .loop_find_mj_partition 
 ;notfound (fall through)
 
@@ -138,6 +165,7 @@ copy_2nd_stage:
 ;load second stage bootloader after the 512 byte mark (since partition table will be mapped too because bios fetch 512 bytes every time)
 ;setup correct starting sector and sector count
 mov si, dap_second_stage
+;mov byte [dap_second_stage.size], 62
 movdqu [si+8], xmm0
 mov WORD [si+2], bx ;NOT the actual lba sectors, version 1 is 62 sectors exactly, totaling 31ish kbs
 call lba_drive_call
@@ -154,11 +182,10 @@ jmp ax ;run second stage bootlaoder
 
 jmp infinite_halt
 
-;db "FUCKYOU"
 
-error_edd:
-mov si, notsupport
-jmp error_stub
+;error_edd:
+;mov si, notsupport
+;jmp error_stub
 
 error_2nd_stage_copy:
 mov si, no2nd
@@ -177,8 +204,7 @@ jmp infinite_halt
 
 lba_drive_call: ;has to be top level calls, or else ret addresses pollute it
 mov ah, 0x42
-mov bx, sp
-add bx, 2
+mov bx, 0x7bfe
 mov dl, byte [bx]
 ;mov dx, cx
 ;mov dx, 0x80
@@ -200,9 +226,9 @@ ret
 
 data:
 helloworld db "h",0x0
-notsupport db "Drive too old.",0xD,0xA,0x0
-no2nd db "Drive smol or broken.", 0xD, 0xA, 0x0
-unknown db "IDK HD Error.",0xD,0xA,0x0
+notsupport db "Drive old",0xA,0x0
+no2nd db "Drive smol",  0xA, 0x0
+unknown db "DiskFault",0xA,0x0
 guidsig dq 0x5452415020494645 
 ; c06cda0d-65b5-49c7-a954-54594723c555
 mjpartid dd BYTE %(0x0d,0xda,0x6c,0xc0)
@@ -219,35 +245,47 @@ sixtytwo dq 62
 
 align 4
 
-dap_second_stage: ;obsolete
-;disk address packet (standard EDD)
-db 0x10
-db 0x0
-dw 62 ;ALWAYS 62 , count
-dw base_read 
-dw 0
-dd 0 ;TO BE SET LATER, start
-dd 0
-
+dap_second_stage:
 dap_signature:
-;disk address packet (standard EDD)
-db 0x10
-db 0x0
-dw 1
-dw base_read
-dw 0
-dd 1
-dd 0
-
 dap_guid_table:
-;disk address packet (standard EDD)
 db 0x10
 db 0x0
-dw 33-2+1
-dw base_read
+.size resw 1
+.base_addr dw base_read
 dw 0
-dd 2
-dd 0
+.start resq 1
+
+
+
+;dap_second_stage: ;obsolete
+;disk address packet (standard EDD)
+;db 0x10
+;db 0x0
+;dw 62 ;ALWAYS 62 , count
+;dw base_read 
+;dw 0
+;dd 0 ;TO BE SET LATER, start
+;dd 0
+
+;dap_signature:
+;;disk address packet (standard EDD)
+;db 0x10
+;db 0x0
+;dw 1
+;dw base_read
+;dw 0
+;dd 1
+;dd 0
+
+;dap_guid_table:
+;disk address packet (standard EDD)
+;db 0x10
+;db 0x0
+;.size dw 33-2+1 ;this is wrong. need to check explicitly
+;dw base_read
+;dw 0
+;.start dd 2 ;this is wrong too. the first partition entry array can start anywhere
+;dd 0
 
 %assign binsize $-_start
 
