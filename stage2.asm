@@ -72,7 +72,7 @@ mov bx, 0x1234
 mov eax, 0xFFFFFFFF
 mov word [eax], bx  ;small snippet to verify unreal mode is enabled.
 
-jmp hltbro ;temp end
+jmp hltbro ;temp end (below is under development)
 
 ;begin searching partition tables for windows and linux signatures
 mov si, beginsearch
@@ -94,16 +94,13 @@ and bx, 1
 
 jz notgpt 
 
-gpt:
-;loop over 128 entries (possibly more and also over the 2nd gpt table) in the future
+gpt: ;0xff max entries, 0xff max single entry size, for gpt
 
 
 
 
-
-notgpt:
-
-
+notgpt: ; everything defined in sector 0. good! 
+;read 0x7c00+446 the first address 
 
 
 
@@ -160,16 +157,18 @@ dd gdt_base
 dap_gpt_packet:
 db 0x16, 0
 .size dw 33-2+1
-dw 0, gpt_entries_base
+dw 0, disk_header
 .start dq 2
 
 gpt_sig:
 dq 0x5452415020494645
 
+disk_header: 
+resb 512
 
 gpt_entries_base:
 gpt_header equ gpt_entries_base
-resb 512*(33-2+1)
+resb 492032-512*62  ; 480.5 KiB (max safe contiguous space after bootloaders)
 
 
 start_linux_kernel_image_load_here:

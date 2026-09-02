@@ -73,7 +73,11 @@ jnz not_gpt
 ;found to be matching guid signature, now scan for the mj-bootloader partition that stores the second stage bootloader
 ;only supports searching 1 partitions array for now
 
+;total size of primary gpt should not exceed 480.5 KiB - 31ish KB for 2nd stage bootloader (maximum safe size of contiguous memory after the bootloader, according to gemini and osdev wiki)
+
+
 mov si, dap_guid_table
+
 movq mm0, [base_read+0x48]
 movq [dap_guid_table+8], mm0
 mov eax, [base_read+0x50] ; eax = number of entries
@@ -82,15 +86,20 @@ and eax, 0xffff ;hard cap at 65535 entires dont need that much
 mov ebx, [base_read+0x54]
 and ebx, 0xffff; sorry, capping single entry size at 65535 bytes too
 push ebx ;save single tnry size
-imul eax, ebx ;size of single entry
+imul eax, ebx ; multiplied by the size of single entry
+cmp eax, 492032-512*62 ;limit of total size array 
+ja error_phuge
+
 xor edx, edx ;upper 32 bits zero out
 mov ebx, 512 ;divide by sectors
 div ebx
 or edx, edx
 jz no_remainder
 add eax, 1
+
 no_remainder:
 mov [dap_guid_table+2], ax
+
 
 
 call lba_drive_call
@@ -129,7 +138,7 @@ sub cx, 1
 jnz .loop_find_mj_partition 
 ;notfound (fall through)
 
-jmp error_2nd_stage_copy
+jmp error_2nd_stage_copy ; no second stage bootloader partition
 
 ;put vars here
 
@@ -137,13 +146,13 @@ jmp error_2nd_stage_copy
 ;mov bpl, [si+32]
 ;movdqu xmm2, [one]
 ;movdqu xmm0, [si+32]
-movdqu xmm1, [si+40]
+movq xmm1, [si+40]
 psubq xmm1, [si+32]
 paddq xmm1, [one]
 psubq xmm1, [sixtytwo] 
 psrlq xmm1, 63
 pand xmm1, [one] ;extract the LSB as the result
-movdqu [one], xmm1
+movq [one], xmm1
 mov bl, [one] ;get the bit in the register and test it
 test bl, bl
 jnz error_2nd_stage_copy ;too small of a partition. need to extend.
@@ -169,7 +178,7 @@ mov si, dap_second_stage
 movdqu [si+8], xmm0
 mov WORD [si+2], bx ;NOT the actual lba sectors, version 1 is 62 sectors exactly, totaling 31ish kbs
 call lba_drive_call
-jc error_2nd_stage_copy
+jc error_2nd_stage_copy ; cant read for some reasons
 
 
 mov ax, base_read
@@ -186,6 +195,10 @@ jmp infinite_halt
 ;error_edd:
 ;mov si, notsupport
 ;jmp error_stub
+
+error_phuge:
+mov si, partitionshuge
+jmp error_stub
 
 error_2nd_stage_copy:
 mov si, no2nd
@@ -225,10 +238,11 @@ jmp puts ;optimization to keep likely loops before so pipeline can recognize
 ret
 
 data:
-helloworld db "h",0x0
-notsupport db "Drive old",0xA,0x0
-no2nd db "Drive smol",  0xA, 0x0
-unknown db "DiskFault",0xA,0x0
+;helloworld db "h",0x0
+notsupport db "Driveold",0x0
+no2nd db "Drivesmol",0x0
+unknown db "DiskFault",0x0
+partitionshuge db "HugeP",0x0 ;ran out of space so had to truncate.. hope you wont ever get to see this error again
 guidsig dq 0x5452415020494645 
 ; c06cda0d-65b5-49c7-a954-54594723c555
 mjpartid dd BYTE %(0x0d,0xda,0x6c,0xc0)
@@ -239,7 +253,7 @@ dd 0x23475954
 dw 0x55c5
 align 16
 one dq 0x1
-align 16
+align 16 
 sixtytwo dq 62
 ;len equ $-$$ ;useless because it is not ret and requires multiple lines
 
