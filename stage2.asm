@@ -96,9 +96,9 @@ pcmpeqq xmm0, [gpt_sig]
 pmovmskb ebx, xmm0
 and bx, 1 ;only get the first 8 bytes compare result 
 
-jz notgpt 
+jz handle_bios
 
-gpt: ;0xff max entries, 0xff max single entry size, for gpt
+movgptwholearray: ;0xff max entries, 0xff max single entry size, for gpt
 ;loop over partition table again
 
 movq mm0,[gpt_header+0x48]
@@ -112,6 +112,10 @@ push ebx ;save single tnry size
 imul eax, ebx ; multiplied by the size of single entry
 cmp eax, 492032-512*62 ;limit of total size array 
 ja error_phuge
+
+
+;pop ebx #single entry size
+;pop eax #num of entries in primary/secondary gpt
 
 
 
@@ -130,27 +134,125 @@ mov si, dap_gpt_packet
 call lba_drive_call
 jc error_pa_copy
 
+
+jmp handle_gpt
+
+
 ;read the first partitions array
 
+;xor ax, ax ;pages (page variable in menu)
+
+;ebx at topmost stack 
+;mov bp, sp
+;mov cx, [bp] ;single entry size: it truncates because pushed ebx and eax capped at max word 65535
+;mov bp, sp
+;add bp, 4 ;
+;mov dx, [bp] ;num entries single arr
 
 
-mov si, itworks
-call puts 
+
+;ax page
+;bx num entries (counter)
+;dx single entry size
+
+handle_bios: ;display fixed 4 entries for boot, easy job
+;set up down/left right, numpads interrupt
+
+
+
+
+;gui routines somewhere here
+
+
+
+
+
+;user chooses one entry here with interrupt key
+;then iret jump back here
+
 
 jmp hltbro
 
 
-notgpt: ; everything defined in sector 0. good! 
-;read 0x7c00+446 the first address 
+;ax page
+;bx num entries (counter)
+;dx single entry size
+handle_gpt:
+
+;set up down/left right, numpads interrupt
+xor eax, eax
+xor edx, edx
+xor ebx, ebx
+xor ecx, ecx
+xor eax, eax ;starts from 0 
+mov bp, sp
+mov edx, [bp] ;single entry size
+mov bp, sp
+add bp, 4
+mov ebx, [bp] ;num entries single array
+
+load_entries_page:
+mov ecx, 10 ;10 entries per page to show (max)
+mov bp, gpt_entries_base ;read ptr read from entries
+imul ecx, eax 
+add bp, cx
+
+mov di, gpt_entries_temp ;write ptr write to temp storage for 10 entries
+
+
+mov ecx, 10
+
+.loop_put:
+push ecx
+mov ecx, edx ;cx becomes the single entry size
+.loop_copy:
+movdqu xmm0, [bp]
+movdqu [di], xmm0
+add di, 16
+add bp, 16
+sub ecx, 16 ;use xmm to load memory 
+jge .loop_copy
+
+add ecx, 16 ;handle the remainder (leftover data not factor of 16)
+sub di, 16 ;write ptr is 1 xmm past last written
+sub bp, 16 ;read ptr too
+
+push eax
+push edx
+push ebx
+push esi
+
+mov eax, edx ;ax now contains the single page size and divide it by 16 later
+xor edx, edx
+mov bx, 16
+idiv bx
+
+or edx, edx
+jz .has_remainder_after
+
+;deal with remainder (that falls out of 16) because of new gpt updates
+
+;use cx for rep movsb
+mov cx, dx ;move the remainder to the counter
+mov si, bp;the read ptr 
+;mov di, di ;di si already di
+rep movsb
+
+pop esi
+pop ebx
+pop edx
+pop eax
+.has_remainder_after:
+
+pop ecx ;recover page size counter
+sub ecx, 1
+jnz .loop_put
+
+;finish loading entries, now print the entries using VESA (or GOP if this is uefi mode)
 
 
 
-
-;mov word [dap_gpt_packet.size], 33-2+1 ;mov in case gpt is matched
-;mov word [dap_gpt_packet.start], 2
-
-
-
+jmp hltbro
 
 error_pa_copy:
 mov si, cannot_copy_pa
@@ -231,9 +333,15 @@ dq 0x5452415020494645
 disk_header: 
 resb 512
 
+
+
 gpt_header: ;also houses the header
 gpt_entries_base equ gpt_header+512
 resb 492032-512*62  ; 480.5 KiB (max safe contiguous space after bootloaders)
 
+gpt_entries_temp: ;for holding loaded entries of the current page
 
-start_linux_kernel_image_load_here:
+;start_linux_kernel_image_load_here: ;no, we read bios/uefi memory layout then
+;decide the biggest memory region
+
+
