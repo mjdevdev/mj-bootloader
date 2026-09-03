@@ -193,21 +193,45 @@ mov ebx, [bp] ;num entries single array
 
 load_entries_page:
 mov ecx, 10 ;10 entries per page to show (max)
+;display_entries_num = num_entries - 10*(page_index) 
+;before jumping to here, check if display_entries_num is leq 0
+;if it is, dont do anything, just dont jump here
+;if you jump here you have to display min 1 item
+
+
 mov bp, gpt_entries_base ;read ptr read from entries
-imul ecx, eax 
-add bp, cx
+imul ecx, eax ;offset = page_offset*10
+add bp, cx ;add offset ;will it wrap..? probably not ;the math doesnt add up
+
+push ebx
+
+sub ebx, ecx ;subtract the total offset = items to print
+push esi
+mov esi, 10
+;EBX MUST BE POSITIVE, BEFORE JUMPING THERE MUST BE CHECKS, TRUST IT TO BE UNSIGNED 
+cmp ebx, esi
+cmova ecx, esi
+pop esi
+pop ebx
+
+
+;incremented pointer. now get the remainder (min 1 max 10)
+;shortage of registers in real mode is the hardest part honestly
+
+
 
 mov di, gpt_entries_temp ;write ptr write to temp storage for 10 entries
 
 
-mov ecx, 10
+;mov ecx, 10 ;we compute the remaining
 
+push ecx ;the actual size of items printed
 .loop_put:
-push ecx
+push ecx ;the index from actual size -> 0
 mov ecx, edx ;cx becomes the single entry size
 .loop_copy:
 movdqu xmm0, [bp]
-movdqu [di], xmm0
+movdqu [edi], xmm0
 add di, 16
 add bp, 16
 sub ecx, 16 ;use xmm to load memory 
@@ -249,7 +273,32 @@ sub ecx, 1
 jnz .loop_put
 
 ;finish loading entries, now print the entries using VESA (or GOP if this is uefi mode)
+print_entries_and_actions:
+;test: print first page entries 
+pop ecx 
 
+push ecx ;looks dumb but necessary, actually irreversible action 
+;as opposed to 
+;push ecx
+;pop ecx
+
+mov bp, sp
+mov edx, [bp] ;single entry size
+;mov bp, sp
+;add bp, 4
+;mov ebx, [bp] ;num entries single array
+
+
+mov bp, gpt_entries_temp
+.loop_print_entries:
+mov si, itworks
+call puts
+
+sub ecx, 1
+jnz .loop_print_entries ;if it wraps and print a million entries then you know something is wrong
+
+
+pop ecx
 
 
 jmp hltbro
@@ -297,6 +346,14 @@ beginsearch db "Searching partitions on your primary drive..",0xD,0xA,0x0
 partition_table_too_huge db "ERROR: GPT Partition is too huge, must not exceed 460 KiB!",0xd,0xa,0x0
 cannot_copy_pa db "ERROR: Cannot copy GPT primary GPT for some reasons.",0XD,0XA,0x0
 itworks db "It works ", 0xd,0xa,0x0
+
+simple_partition_msg:
+db "Partition "
+.num:
+db 0, ": "
+resb 20
+db 0xd,0xa,0x0
+
 
 align 8
 gdt_base:

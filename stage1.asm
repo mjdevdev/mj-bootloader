@@ -78,8 +78,21 @@ jnz not_gpt
 
 mov si, dap_guid_table
 
-movq mm0, [base_read+0x48]
-movq [dap_guid_table+8], mm0
+;movq mm0, [base_read+0x48]
+;movq [dap_guid_table+8], mm0
+
+;check if upper 6 bits are not zero
+;if not zero, its too huge to be placed in the bootloader memory (ensure that it overflows controllably)
+;so can increment segment register properly
+cld
+xor eax, eax
+mov di, base_read+0x48+2 ;scan 6
+cmpsw
+jnz error_phuge
+cmpsd
+jnz error_phuge
+mov ax, [base_read+0x48]
+mov [dap_guid_table+8], ax
 mov eax, [base_read+0x50] ; eax = number of entries
 push eax ;save the number of entries
 and eax, 0xffff ;hard cap at 65535 entires dont need that much
@@ -87,7 +100,9 @@ mov ebx, [base_read+0x54]
 and ebx, 0xffff; sorry, capping single entry size at 65535 bytes too
 push ebx ;save single tnry size
 imul eax, ebx ; multiplied by the size of single entry
-cmp eax, 492032-512*62 ;limit of total size array 
+
+cmp eax, 492032-512*62 ;limit of total size array  
+;address using segment 16 bit offset pls
 ja error_phuge
 
 xor edx, edx ;upper 32 bits zero out
@@ -98,7 +113,7 @@ jz no_remainder
 add eax, 1
 
 no_remainder:
-mov [dap_guid_table+2], ax
+mov [dap_guid_table+2], ax ;16 bit guaranteed to be able to store the entire number with the defined upper bound
 
 
 
@@ -125,15 +140,24 @@ mov cx, ax
 movdqu xmm0, [mjpartid]
 
 .loop_find_mj_partition:
-movdqu xmm1, [si] ;fetch first 128 bits
+movdqu xmm1, gs:[si] ;fetch first 128 bits
 pcmpeqb xmm1, xmm0
 pmovmskb edi, xmm1
 not di
 test di, di
 jz .found
 
-
+push di
 add si, bx
+jnc .post_increment_segment_reg
+mov di ,gs 
+add di, 0b0001000000000000
+mov gs, di
+
+;mov gs, ds
+.post_increment_segment_reg
+pop di
+
 sub cx, 1
 jnz .loop_find_mj_partition 
 ;notfound (fall through)
@@ -144,15 +168,17 @@ jmp error_2nd_stage_copy ; no second stage bootloader partition
 
 .found: 
 ;mov bpl, [si+32]
-;movdqu xmm2, [one]
+movdqu xmm2, [one]
+movdqu xmm3, [sixtytwo]
 ;movdqu xmm0, [si+32]
+
 movq xmm1, [si+40]
 psubq xmm1, [si+32]
-paddq xmm1, [one]
-psubq xmm1, [sixtytwo] 
+paddq xmm1, xmm2
+psubq xmm1, xmm3
 psrlq xmm1, 63
-pand xmm1, [one] ;extract the LSB as the result
-movq [one], xmm1
+pand xmm1, xmm2 ;extract the LSB as the result
+movq xmm2, xmm1
 mov bl, [one] ;get the bit in the register and test it
 test bl, bl
 jnz error_2nd_stage_copy ;too small of a partition. need to extend.
@@ -168,14 +194,13 @@ jmp copy_2nd_stage
 
 
 not_gpt:
-movdqu xmm0, [one]
 mov bx, 62
 copy_2nd_stage:
 ;load second stage bootloader after the 512 byte mark (since partition table will be mapped too because bios fetch 512 bytes every time)
 ;setup correct starting sector and sector count
 mov si, dap_second_stage
 ;mov byte [dap_second_stage.size], 62
-movdqu [si+8], xmm0
+movdqu [si+8], xmm2
 mov WORD [si+2], bx ;NOT the actual lba sectors, version 1 is 62 sectors exactly, totaling 31ish kbs
 call lba_drive_call
 jc error_2nd_stage_copy ; cant read for some reasons
@@ -251,13 +276,11 @@ dw BYTE %(0xc7,0x49)
 dw 0x54a9
 dd 0x23475954      
 dw 0x55c5
-align 16
 one dq 0x1
-align 16 
 sixtytwo dq 62
 ;len equ $-$$ ;useless because it is not ret and requires multiple lines
 
-align 4
+;align 4 ;this might fail but save space! run on more expensive motherboards!
 
 dap_second_stage:
 dap_signature:
@@ -306,7 +329,7 @@ dw 0
 %if binsize > 446
     %error "The bootloader code has exceeded 446 (size" %+ %!string binsize %+ " ), the maximum number allowed for mbr bootloaders!"
 %else
-
+    %warning "Bootloader size: " %+ %!string binsize %+ "."
 %endif
 
 times 446-($-$$) db 0 ;bytes allocated for bootloader under mbr scheme, and protective mbr under gpt
