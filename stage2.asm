@@ -21,8 +21,12 @@ call puts
 cli
 lgdt [gdtr] ;not the value, but the pointer wrapped in a bracket like lea
 
+
+
+mov eax, cr0
 or al, 1
 mov cr0, eax
+
 ;32 bit unlocked. now all segment registers trigger a descriptor write to cache.
 
 jmp 0b00001000:pemode ;load code descriptor into cs
@@ -68,11 +72,7 @@ mov ss, ax
 
 
 
-mov bx, 0x1234
-mov eax, 0xFFFFFFFF
-mov word [eax], bx  ;small snippet to verify unreal mode is enabled.
 
-jmp hltbro ;temp end (below is under development)
 
 ;begin searching partition tables for windows and linux signatures
 mov si, beginsearch
@@ -80,23 +80,64 @@ call puts
 
 ;do the gpt sig matching again
 
-mov ah, 0x42
-mov bp, sp
-mov dl, byte [bp]
-mov word [dap_gpt_packet.start], 1
-mov word [dap_gpt_packet.size], 1
-int 0x13
+mov si, dap_gpt_packet
 
-movdqu xmm0, [gpt_header]
+mov word [dap_gpt_packet.start], 1
+mov word [dap_gpt_packet.addr], gpt_header
+mov word [dap_gpt_packet.addr+2], 0
+mov word [dap_gpt_packet.size], 1
+call lba_drive_call
+jc error_pa_copy
+
+
+;another way to compare the gpt header
+movq xmm0, [gpt_header]
 pcmpeqq xmm0, [gpt_sig]
 pmovmskb ebx, xmm0
-and bx, 1
+and bx, 1 ;only get the first 8 bytes compare result 
 
 jz notgpt 
 
 gpt: ;0xff max entries, 0xff max single entry size, for gpt
+;loop over partition table again
+
+movq mm0,[gpt_header+0x48]
+movq [dap_gpt_packet.start], mm0 ;address starts at start LBA of array
+mov eax, [gpt_header+0x50] ; eax = number of entries
+push eax ;save the number of entries
+and eax, 0xffff ;hard cap at 65535 entires dont need that much
+mov ebx, [gpt_header+0x54]
+and ebx, 0xffff; sorry, capping single entry size at 65535 bytes too
+push ebx ;save single tnry size
+imul eax, ebx ; multiplied by the size of single entry
+cmp eax, 492032-512*62 ;limit of total size array 
+ja error_phuge
 
 
+
+xor edx, edx ;upper 32 bits zero out
+mov ebx, 512 ;divide by sectors
+div ebx
+or edx, edx
+jz no_remainder
+add eax, 1
+
+no_remainder:
+mov [dap_gpt_packet.size], ax
+mov word [dap_gpt_packet.addr], gpt_entries_base
+mov word [dap_gpt_packet.addr+2], 0
+mov si, dap_gpt_packet
+call lba_drive_call
+jc error_pa_copy
+
+;read the first partitions array
+
+
+
+mov si, itworks
+call puts 
+
+jmp hltbro
 
 
 notgpt: ; everything defined in sector 0. good! 
@@ -104,17 +145,26 @@ notgpt: ; everything defined in sector 0. good!
 
 
 
-mov word [dap_gpt_packet.size], 33-2+1 ;mov in case gpt is matched
-mov word [dap_gpt_packet.start], 2
+
+;mov word [dap_gpt_packet.size], 33-2+1 ;mov in case gpt is matched
+;mov word [dap_gpt_packet.start], 2
 
 
 
 
+error_pa_copy:
+mov si, cannot_copy_pa
+call puts
+jmp hltbro
+
+
+error_phuge:
+mov si, partition_table_too_huge
+call puts
 
 hltbro:
 hlt
 jmp hltbro
-
 
 puts:
 cld 
@@ -128,9 +178,23 @@ jmp puts ;optimization to keep likely loops before so pipeline can recognize
 .return:
 ret
 
+
+lba_drive_call: ;has to be top level calls, or else ret addresses pollute it
+mov ah, 0x42
+mov bx, 0x7c00-2
+xor dx, dx
+mov dl, byte [bx]
+;mov dx, cx
+;mov dx, 0x80
+int 0x13
+ret
+
 data:
 testlol db "DEBUG: Second Stage Bootloader has been successfully loaded.",0xD,0xA,0x0
 beginsearch db "Searching partitions on your primary drive..",0xD,0xA,0x0
+partition_table_too_huge db "ERROR: GPT Partition is too huge, must not exceed 460 KiB!",0xd,0xa,0x0
+cannot_copy_pa db "ERROR: Cannot copy GPT primary GPT for some reasons.",0XD,0XA,0x0
+itworks db "It works ", 0xd,0xa,0x0
 
 align 8
 gdt_base:
@@ -157,17 +221,18 @@ dd gdt_base
 dap_gpt_packet:
 db 0x16, 0
 .size dw 33-2+1
-dw 0, disk_header
+.addr resd 1 
 .start dq 2
 
+align 16
 gpt_sig:
 dq 0x5452415020494645
 
 disk_header: 
 resb 512
 
-gpt_entries_base:
-gpt_header equ gpt_entries_base
+gpt_header: ;also houses the header
+gpt_entries_base equ gpt_header+512
 resb 492032-512*62  ; 480.5 KiB (max safe contiguous space after bootloaders)
 
 
