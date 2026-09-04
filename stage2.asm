@@ -24,7 +24,7 @@ jmp 0b10000:pe
 
 pe:
 
-pehlt:
+
 mov bx, 0b1000
 mov ds, bx
 ;mov ss, bx ;safe since it only decides wrap behaviour 
