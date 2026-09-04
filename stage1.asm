@@ -7,6 +7,7 @@ base_read equ 0x7E00
 org 0X7c00
 
 _start:
+    push dx 
     xor ax, ax                      ; clear ax
 
     mov ds, ax
@@ -30,7 +31,7 @@ _start:
     call lba_drive_call
     jc error_unknown_or_annoying
 
-    ; Check GPT signature "EFI PART"
+    ; Check GPT UUID signature in 1st sector (decide if gpt or not
     mov cx, 2
     mov si, base_read
     mov di, guidsig
@@ -39,21 +40,24 @@ _start:
 
     mov si, dap_guid_table
 
-    cld
-    xor eax, eax
-    mov di, base_read+0x48+2        ; point to upper 6 bytes of PartitionEntryLBA
-    scasw
-    jnz error_phuge
-    scasd
-    jnz error_phuge
+    ;cld
+    ;xor eax, eax
+    ;mov di, base_read+0x48+2        ; point to upper 6 bytes of PartitionEntryLBA
+    ;scasw
+    ;jnz error_phuge
+    ;scasd
+    ;jnz error_phuge
+    
 
-    ; FIX 1: Copy Partition Array LBA (from GPT Header offset 0x48) into DAP
-    mov ax, [base_read+0x48]
-    mov [dap_guid_table+8], ax
+    ;mov ax, [base_read+0x48]
+    ;mov [dap_guid_table+8], ax
+    emms
+    movq mm0, [base_read+0x48]
+    movq [dap_guid_table+8], mm0
 
-    movzx eax, word [base_read+0x50] ; eax = number of entries
+    movzx eax, dword [base_read+0x50] ; eax = number of entries
     push eax
-    movzx ebx, word [base_read+0x54] ; ebx = entry size
+    movzx ebx, dword [base_read+0x54] ; ebx = entry size
     push ebx
     imul eax, ebx
 
