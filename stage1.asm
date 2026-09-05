@@ -7,7 +7,6 @@ base_read equ 0x7E00
 org 0X7c00
 
 _start:
-    push dx 
     xor ax, ax                      ; clear ax
 
     mov ds, ax
@@ -16,6 +15,7 @@ _start:
     mov gs, ax                      ; initialize GS
 
     mov sp, 0x7c00                  ; stack grows downwards
+    push dx 
     mov bp, dx                      ; preserve boot drive number in BP
 
     ; enable SSE2
