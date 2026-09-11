@@ -13,8 +13,12 @@ char *lol = "DEBUG: 32 bit mode proved successful.";
 /*extern*/ void main(){
   puts(lolxd);
   enter_protected_mode(main_32); 
+  puts(lolxd);
 }
 
 void end(){
-  puts(lolxd);
+  puts(lol);
+while(1) { 
+      __asm__ volatile ("cli; hlt"); 
+  }
 }

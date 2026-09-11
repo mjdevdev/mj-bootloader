@@ -83,6 +83,7 @@ retd
 ;
 ;
 enter_protected_mode:
+bits 16
 xor ax, ax
 mov ds, ax
 mov ss, ax
@@ -152,7 +153,12 @@ mov cr0, eax
 jmp 0x0:.flush_cs
 
 .flush_cs:
-
+mov ax, 0
+    mov ds, ax
+    mov ss, ax
+    mov es, ax
+    mov gs, ax
+    mov fs, ax
 
 sti
 ;mov bp, sp
