@@ -38,7 +38,7 @@ BINS := stage1.bin stage2.bin
 ASMOBJS := stage2.o
 COBJS := useless_c.o#UI.o useless.o
 CPPOBJS := 
-C32OBJS :=
+C32OBJS := useless_c_32.o
 CPP32OBJS :=
 HOST_DISK := $(shell lsblk -no PKNAME $$(findmnt -n -o SOURCE /) | sed 's|^|/dev/|')
 TEST_DISK := gpt-test.iso#alpine-standard-3.24.1-x86_64.iso
@@ -46,7 +46,7 @@ MJ_PART_ID := C06CDA0D-65B5-49C7-A954-54594723C555
 MJ_FIRST_PART_TEST = $(shell sfdisk --dump $(TEST_DISK) 2>/dev/null | grep $(MJ_PART_ID) | awk '{print $$1}')
 MJ_FIRST_PART = $(shell sudo sfdisk --dump $(HOST_DISK) 2>/dev/null | grep $(MJ_PART_ID) | awk '{print $$1}')
 
-stage2.bin: $(ASMOBJS) $(COBJS) $(CPPOBJS)
+stage2.bin: $(ASMOBJS) $(COBJS) $(CPPOBJS) $(C32OBJS) $(CPP32OBJS)
 	echo "$$STAGE2_LINKER_SCRIPT" | ld -T /dev/stdin -m elf_i386
 all: $(BINS)
 	@echo "Safe build complete. Run 'make test' or 'make install' explicitly to burn bootloaders."
