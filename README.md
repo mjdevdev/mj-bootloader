@@ -37,10 +37,10 @@
     <img src="images/logo.png" alt="Logo" width="80" height="80">
   </a>-->
 
-<h3 align="center">MJ Bootloader</h3>
+<h3 align="center">MJ Bootloader x86 version</h3>
 
   <p align="center">
-    Easy-to-install foolproof and minimalist bootloader
+    Easy-to-install foolproof and minimalist x86 bootloader
     <!--<br />
     <a href="https://github.com/github_username/repo_name"><strong>Explore the docs »</strong></a>-->
     <br />
