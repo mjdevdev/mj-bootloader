@@ -29,7 +29,7 @@ hlt
 jmp halt
 
 
-puts:
+puts: ;hacky function for C since gcc uses 32 bit override in 16 bit for their internals
 mov edi, [esp+4]
 jmp .loop
 .cloop:
@@ -45,5 +45,5 @@ retd
 
 
 section .data
-sixseven db 67 dup (67)
+;sixseven db 67 dup (67)
 debug db "DEBUG: Stage 2 bootloader successfully loaded.",0xd,0xA,0x0

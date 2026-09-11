@@ -1,4 +1,3 @@
-__asm__(".code16gcc");
 
 extern void puts(char *const str);
 

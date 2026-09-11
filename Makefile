@@ -2,14 +2,14 @@
 # This makefile is fed into gemini for improvements and safety. You may use it safely.
 
 
-CXXFLAGS:= -m16 -c -ffreestanding  -fno-pie -fno-pic  -ffunction-sections -fdata-sections #-Fgc-sections #below are optimization flags lol
+CXXFLAGS:=  -c -ffreestanding  -fno-pie -fno-pic  -ffunction-sections -fdata-sections #-Fgc-sections #below are optimization flags lol
 CC       := gcc
 CXX	 := g++
         
 CFLAGS:= $(CXXFLAGS) 
 
 define STAGE2_LINKER_SCRIPT
-INPUT($(ASMOBJS) $(CPPOBJS) $(COBJS))
+INPUT($(ASMOBJS) $(CPPOBJS) $(COBJS) $(C32OBJS) $(CPP32OBJS))
 ENTRY(_start) 
 OUTPUT_FORMAT(binary)
 OUTPUT(stage2.bin)
@@ -38,6 +38,8 @@ BINS := stage1.bin stage2.bin
 ASMOBJS := stage2.o
 COBJS := useless_c.o#UI.o useless.o
 CPPOBJS := 
+C32OBJS :=
+CPP32OBJS :=
 HOST_DISK := $(shell lsblk -no PKNAME $$(findmnt -n -o SOURCE /) | sed 's|^|/dev/|')
 TEST_DISK := gpt-test.iso#alpine-standard-3.24.1-x86_64.iso
 MJ_PART_ID := C06CDA0D-65B5-49C7-A954-54594723C555
@@ -154,9 +156,14 @@ install: stage2.bin $(BINS) #currently only testing on gpt disks, later will add
 $(ASMOBJS): %.o: %.asm
 	nasm $^ -o $@ -f elf32 #elf64 to accomodate 64 bit addresses, but the executing code can execute arbitrary bit mode code because linker disregards the instruction encodings. only memory references and stuffs.
 #elf 64 doesnt work cant link two executables with different formats. defaulting back to 32
-#$(COBJS): %.o: %.c #use implicit rules
+$(COBJS):  CFLAGS += -m16#use implicit rules  
 
-#$(CPPOBJS): %.o %.cpp #same
+$(CPPOBJS): CXXFLAGS += -m16 #same
+
+$(C32OBJS): CFLAGS += -m32 #use 32 bit encodings and optional 16 bit override 0x66 and 0x67
+
+$(CPP32OBJS): CFLAGS += -m32
+
 
 
 #for direct binary only, for mixing with C/C++ need linker and more complex steps
