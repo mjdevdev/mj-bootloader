@@ -1,22 +1,57 @@
 # Supporting 16 bit bootloaders build onlt, for now
 # This makefile is fed into gemini for improvements and safety. You may use it safely.
 
+
+CXXFLAGS:= -m16 -c -ffreestanding  -fno-pie -fno-pic  -ffunction-sections -fdata-sections #-Fgc-sections #below are optimization flags lol
+CC       := gcc
+CXX	 := g++
+        
+CFLAGS:= $(CXXFLAGS) 
+
+define STAGE2_LINKER_SCRIPT
+INPUT($(ASMOBJS) $(CPPOBJS) $(COBJS))
+ENTRY(_start) 
+OUTPUT_FORMAT(binary)
+OUTPUT(stage2.bin)
+MEMORY {
+	STAGE2(wrx) : org = 0x7E00, len = 31K
+}
+SECTIONS {
+	. = 0x7E00;
+	.second_stage : {
+		stage2.o(.text)
+		*(.text .text.*)
+		*(.rodata .rodata.*)
+		*(.data .data.*)
+		*(.data.rel.ro .data.rel.ro.*)
+		*(.bss .bss.*)
+	} > STAGE2
+	/DISCARD/ : {
+		*(*)
+	}
+}
+endef
+export STAGE2_LINKER_SCRIPT
+
+
 BINS := stage1.bin stage2.bin
+ASMOBJS := stage2.o
+COBJS := useless_c.o#UI.o useless.o
+CPPOBJS := 
 HOST_DISK := $(shell lsblk -no PKNAME $$(findmnt -n -o SOURCE /) | sed 's|^|/dev/|')
 TEST_DISK := gpt-test.iso#alpine-standard-3.24.1-x86_64.iso
 MJ_PART_ID := C06CDA0D-65B5-49C7-A954-54594723C555
-
-
-
 MJ_FIRST_PART_TEST = $(shell sfdisk --dump $(TEST_DISK) 2>/dev/null | grep $(MJ_PART_ID) | awk '{print $$1}')
 MJ_FIRST_PART = $(shell sudo sfdisk --dump $(HOST_DISK) 2>/dev/null | grep $(MJ_PART_ID) | awk '{print $$1}')
 
+stage2.bin: $(ASMOBJS) $(COBJS) $(CPPOBJS)
+	echo "$$STAGE2_LINKER_SCRIPT" | ld -T /dev/stdin -m elf_i386
 all: $(BINS)
 	@echo "Safe build complete. Run 'make test' or 'make install' explicitly to burn bootloaders."
 
 #TODO: write windows version of bootloader installer, with GUI
 
-test: $(BINS) #currently only testing on gpt disks, later will add mbr support 
+test: stage2.bin $(BINS) #currently only testing on gpt disks, later will add mbr support 
 	@echo "Testing bootloader burn on $(TEST_DISK)..."
 	@DISKTYPE=$$(sfdisk --dump $(TEST_DISK) | grep label: | awk '{print $$2}') ;\
 	echo "Copying stage 1 bootloader..." ;\
@@ -53,7 +88,7 @@ test: $(BINS) #currently only testing on gpt disks, later will add mbr support
 	echo "Successfully written stage 2 to $(TEST_DISK) in partition $$PART"
 
 
-install: $(BINS) #currently only testing on gpt disks, later will add mbr support 
+install: stage2.bin $(BINS) #currently only testing on gpt disks, later will add mbr support 
 	@echo "WARNING: You are writing directly to a hardware drive $(HOST_DISK) and burning bootloader on it."
 	@echo "You might brick your device. Press any other keys to abort, or y/Y to continue..."; \
 	read CONFIRM; \
@@ -113,8 +148,25 @@ install: $(BINS) #currently only testing on gpt disks, later will add mbr suppor
 # 	if [ -z "$$PART" ]; then echo "ERROR: Partition target resolution failed!" >&2; exit 1; fi; \
 # 	sudo dd if=stage2.bin of=$$PART status=progress
 
-$(BINS): %.bin: %.asm
+
+	
+
+$(ASMOBJS): %.o: %.asm
+	nasm $^ -o $@ -f elf32 #elf64 to accomodate 64 bit addresses, but the executing code can execute arbitrary bit mode code because linker disregards the instruction encodings. only memory references and stuffs.
+#elf 64 doesnt work cant link two executables with different formats. defaulting back to 32
+#$(COBJS): %.o: %.c #use implicit rules
+
+#$(CPPOBJS): %.o %.cpp #same
+
+
+#for direct binary only, for mixing with C/C++ need linker and more complex steps
+ %.bin: %.asm
 	nasm $^ -o $@ -f bin
+
+
+
+
+
 
 #ifeq ($(MJ_FIRST_PART),)
 #INSTALL: $(BINS)
@@ -128,7 +180,7 @@ $(BINS): %.bin: %.asm
 #	sudo dd if=stage2.bin of=$(MJ_FIRST_PART) status=progress
 #endif
 
-BINS := stage1.bin stage2.bin
+#BINS := stage1.bin stage2.bin
 
 #ALL: $(BINS) 
 #	@echo in progress
@@ -136,8 +188,8 @@ BINS := stage1.bin stage2.bin
 #iso: $(BINS) # like a bootable usb stick with bootloader only, used to rescue your device and force install bootloader
 	
 
-$(BINS): %.bin: %.asm #nasm only
-	nasm $^ -o $@ -f bin		
+#$(BINS): %.bin: %.asm #nasm only
+#	nasm $^ -o $@ -f bin		
 
 #
 #
