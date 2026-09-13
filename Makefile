@@ -2,7 +2,7 @@
 # This makefile is fed into gemini for improvements and safety. You may use it safely.
 
 
-CXXFLAGS:=  -c -ffreestanding  -fno-pie -fno-pic  -ffunction-sections -fdata-sections #-Fgc-sections #below are optimization flags lol
+CXXFLAGS:=  -c -fno-stack-protector -ffreestanding  -fno-pie -fno-pic  -ffunction-sections -fdata-sections #-Fgc-sections #below are optimization flags lol
 CC       := gcc
 CXX	 := g++
         
@@ -36,7 +36,7 @@ export STAGE2_LINKER_SCRIPT
 
 BINS := stage1.bin stage2.bin
 ASMOBJS := stage2.o
-COBJS := useless_c.o#UI.o useless.o
+COBJS := useless_c.o stage2_main.o #UI.o useless.o
 CPPOBJS := 
 C32OBJS := useless_c_32.o
 CPP32OBJS :=
