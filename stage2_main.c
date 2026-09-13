@@ -69,19 +69,29 @@ void stage2_main(){
     }
   }
   
-    uint16_t offset = vesaBlock.OemStringPtr[0];
+uint16_t offset = vesaBlock.OemStringPtr[0];
   uint16_t segreg = vesaBlock.OemStringPtr[1];
 
-  puts("OEM String: ");
+  // 1. Create a safe, clean local buffer
+  char oem_name[64];
   
-  // Loop and print character-by-character using our far-read helper
-  for (int i = 0; i < 64; i++) {
-      char c = read_far_byte(segreg, offset + i);
-      if (c == '\0') break; // Stop at null terminator
-
-      char buf[2] = { c, '\0' };
-      puts(buf);
+  // 2. Clear the buffer with null terminators
+  for(int i = 0; i < 64; i++) {
+      oem_name[i] = '\0';
   }
+
+  // 3. Extract the full string character-by-character
+  for (int i = 0; i < 63; i++) {
+      char c = read_far_byte(segreg, offset + i);
+      if (c == '\0') {
+          break; // Stop when we hit the end of the string
+      }
+      oem_name[i] = c;
+  }
+
+  // 4. Print the entire string in one clean shot!
+  puts("OEM Name: ");
+  puts(oem_name);
   puts("\r\n");
 
   
