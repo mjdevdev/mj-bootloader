@@ -43,21 +43,25 @@ jmp halt
 
 
 global puts
-
-;itanium i386 abi (32 bit for gcc)
-;void puts(const char *ptr)
-puts: ;hacky function for C since gcc uses 32 bit override in 16 bit for their internals
-mov edi, [esp+4]
-jmp .loop
+puts: 
+    pushad
+    mov ebp, esp
+    
+    ; pushad = 32 bytes, ret addr = 4. Total = 36.
+    mov edi, [ebp+36] 
+    jmp .loop
 .cloop:
-mov ah, 0x0e
-int 0x10
-inc edi
+    mov ah, 0x0e
+    mov bh, 0x00     
+    int 0x10
+    inc edi
 .loop:
-mov al, [edi]
-or al, al
-jnz .cloop
-retd
+    mov al, [edi]
+    or al, al
+    jnz .cloop
+    
+    popad
+    retd
 
 
 ;use call this snippet will handle
@@ -174,35 +178,53 @@ global getVBEInfo
 ;03h function invalid in current video mode
 
 getVBEInfo:
-mov bp, sp
-mov edi, [bp+4]
-push edi
-and edi, 0xfff00000
-jnz .ptr_too_huge
 
-pop edi
-
-push esi
-push edi
-push es
-mov esi, edi
-shr esi, 4
-mov es, si
-and edi, 0b1111
+push ax
+pushad
 mov ax, 0x4f00
+mov bx, 0
+mov es, bx
+mov bx, sp
+.offset equ 32+2+4
+mov di, [bx+.offset] ;gcc uses segment 0 often, within 64kb window. 
 int 0x10
-pop es
-pop edi
-pop esi
+mov word [bx+32], ax
+
+
+
+
+popad
+pop ax
+
 
 
 retd
+
 
 .ptr_too_huge:
 pop edi
 mov eax, 6767
 retd
 
+global read_far_byte
+read_far_byte:
+    push ebp
+    mov ebp, esp
+    push ebx
+    push es
+    
+    xor eax, eax         
+    
+    mov bx, [ebp+8]     
+    mov es, bx         
+   
+    mov bx, [ebp+12]     
+    mov al, [es:bx]      
+    
+    pop es
+    pop ebx
+    pop ebp
+    retd
 
 
 section .data

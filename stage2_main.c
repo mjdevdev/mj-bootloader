@@ -21,27 +21,27 @@ static void* memcpy(void* dest, const void* src, size_t n) {
 }
 
 
-static char read_far_byte(uint16_t seg, uint16_t off) {
-    char val;
-    asm volatile(
-        "push %%gs\n\t"
-        "mov %1, %%gs\n\t"
-        "mov %%gs:(%2), %0\n\t"  
-        "pop %%gs"
-        : "=r"(val)
-        : "r"(seg), "S"(off)     
-        : "memory"
-    );
-    return val;
-}
+char read_far_byte(uint16_t segreg, uint16_t offset);
+
 
 struct VesaInfoBlock vesaBlock = {.VbeSignature = "VBE2", .VbeVersion=0x200};
 
 extern uint16_t getVBEInfo(struct VesaInfoBlock *);
 
 static char *lol = " \r\n";
+  char buf[2] = {0, '\0'};
 
 extern void puts(const char*);
+
+void print_hex(uint16_t val) {
+    char hex[5] = "0000";
+    for (int i = 3; i >= 0; i--) {
+        int nibble = val & 0xF;
+        hex[i] = (nibble < 10) ? ('0' + nibble) : ('A' + nibble - 10);
+        val >>= 4;
+    }
+    puts(hex);
+}
 
 void stage2_main(){
   if((uint32_t)&vesaBlock >= (uint32_t) 0x0fffff){
@@ -69,29 +69,27 @@ void stage2_main(){
     }
   }
   
-uint16_t offset = vesaBlock.OemStringPtr[0];
+  uint16_t offset = vesaBlock.OemStringPtr[0];
   uint16_t segreg = vesaBlock.OemStringPtr[1];
 
-  // 1. Create a safe, clean local buffer
-  char oem_name[64];
-  
-  // 2. Clear the buffer with null terminators
-  for(int i = 0; i < 64; i++) {
-      oem_name[i] = '\0';
-  }
 
-  // 3. Extract the full string character-by-character
-  for (int i = 0; i < 63; i++) {
+ /*
+  char oem_name [64]={0};
+  for (int i = 0; i < 64; i++) {
       char c = read_far_byte(segreg, offset + i);
       if (c == '\0') {
-          break; // Stop when we hit the end of the string
+          break; 
       }
       oem_name[i] = c;
   }
 
-  // 4. Print the entire string in one clean shot!
-  puts("OEM Name: ");
   puts(oem_name);
+  */
+
+   
+
+  
+
   puts("\r\n");
 
   
